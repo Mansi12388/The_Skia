@@ -1,13 +1,10 @@
-import 'dart:developer';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:parivartan/CommonMan_Module/FirebaseInitializers.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'Firebase_Initializer.dart';
 
 // ============ APP COLORS ============
 class AppColors {
@@ -43,27 +40,6 @@ class AppColors {
 //   }
 // }
 
-// FirebaseOptions _getFirebaseOptions() {
-//   if (kIsWeb) {
-//     return const FirebaseOptions(
-//       apiKey: 'AIzaSyDkmtgkymdThtASpBdxmWOGd6l2oyIgK_E',
-//       appId: '1:776412307701:android:fe13f2c79d8260293d25bc',
-//       messagingSenderId: '776412307701',
-//       projectId: 'parivartan-c3238',
-//       storageBucket: 'parivartan-c3238.firebasestorage.app',
-//     );
-//   } else {
-//     return const FirebaseOptions(
-//       apiKey: 'AIzaSyDkmtgkymdThtASpBdxmWOGd6l2oyIgK_E',
-//       appId: '1:776412307701:ios:xxxxxxxxxxxxx',
-//       messagingSenderId: '776412307701',
-//       projectId: 'parivartan-c3238',
-//       storageBucket: 'parivartan-c3238.firebasestorage.app',
-//       iosClientId: 'your-ios-client-id',
-//       iosBundleId: 'com.example.parivartan',
-//     );
-//   }
-// }
 // ============ DONATION MODEL ============
 class DonationModel {
   final String id;
@@ -76,6 +52,7 @@ class DonationModel {
   final String phone;
   final String? transactionId;
   final String paymentStatus;
+  final String approvalStatus;
 
   DonationModel({
     required this.id,
@@ -88,10 +65,11 @@ class DonationModel {
     required this.phone,
     this.transactionId,
     this.paymentStatus = 'Completed',
+    this.approvalStatus = 'Pending',
   });
 
   Map<String, dynamic> toMap() {
-    final map = {
+    return {
       'id': id,
       'type': type,
       'details': details,
@@ -102,33 +80,25 @@ class DonationModel {
       'phone': phone,
       'transactionId': transactionId,
       'paymentStatus': paymentStatus,
-      'createdAt': FieldValue.serverTimestamp(),
+      'approvalStatus': approvalStatus,
+      'updatedAt': FieldValue.serverTimestamp(),
     };
-    debugPrint('📝 toMap() output: $map');
-    return map;
   }
 
   factory DonationModel.fromMap(Map<String, dynamic> map) {
-    try {
-      return DonationModel(
-        id: map['id'] as String,
-        type: map['type'] as String,
-        details: map['details'] as String,
-        amount: map['amount'] != null
-            ? (map['amount'] as num).toDouble()
-            : null,
-        date: (map['date'] as Timestamp).toDate(),
-        name: map['name'] as String,
-        email: map['email'] as String,
-        phone: map['phone'] as String,
-        transactionId: map['transactionId'] as String?,
-        paymentStatus: (map['paymentStatus'] as String?) ?? 'Completed',
-      );
-    } catch (e) {
-      debugPrint('❌ Error in fromMap: $e');
-      debugPrint('❌ Problematic map data: $map');
-      rethrow;
-    }
+    return DonationModel(
+      id: map['id'] as String,
+      type: map['type'] as String,
+      details: map['details'] as String,
+      amount: map['amount'] != null ? (map['amount'] as num).toDouble() : null,
+      date: (map['date'] as Timestamp).toDate(),
+      name: map['name'] as String,
+      email: map['email'] as String,
+      phone: map['phone'] as String,
+      transactionId: map['transactionId'] as String?,
+      paymentStatus: (map['paymentStatus'] as String?) ?? 'Completed',
+      approvalStatus: (map['approvalStatus'] as String?) ?? 'Pending',
+    );
   }
 
   DonationModel copyWith({
@@ -142,6 +112,7 @@ class DonationModel {
     String? phone,
     String? transactionId,
     String? paymentStatus,
+    String? approvalStatus,
   }) {
     return DonationModel(
       id: id ?? this.id,
@@ -154,67 +125,27 @@ class DonationModel {
       phone: phone ?? this.phone,
       transactionId: transactionId ?? this.transactionId,
       paymentStatus: paymentStatus ?? this.paymentStatus,
+      approvalStatus: approvalStatus ?? this.approvalStatus,
     );
   }
 }
 
 // ============ FIREBASE CONTROLLER ============
-class FirebaseController {
+class AdminFirebaseController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   CollectionReference get _donationsCollection =>
       _firestore.collection('Donation');
 
-  Future<void> saveDonation(DonationModel donation) async {
-    try {
-      debugPrint('\n========================================');
-      debugPrint('🔥 SAVING DONATION TO FIREBASE');
-      debugPrint('========================================');
-      debugPrint('📍 Collection: Donation');
-      debugPrint('🆔 Document ID: ${donation.id}');
-      debugPrint('📦 Platform: ${kIsWeb ? "Web" : "Mobile"}');
-
-      final donationData = donation.toMap();
-      debugPrint('📄 Data to save: $donationData');
-
-      // Try to save the document
-      debugPrint('⏳ Attempting to write to Firestore...');
-      await _donationsCollection.doc(donation.id).set(donationData);
-
-      debugPrint('✅ Write operation completed');
-      debugPrint('⏳ Waiting 1 second for propagation...');
-      await Future.delayed(const Duration(seconds: 1));
-
-      // Verify the write
-      debugPrint('🔍 Verifying document exists...');
-      final docSnapshot = await _donationsCollection.doc(donation.id).get();
-
-      if (docSnapshot.exists) {
-        debugPrint('✅✅✅ SUCCESS! Document verified in Firestore');
-        debugPrint('📄 Saved data: ${docSnapshot.data()}');
-      } else {
-        debugPrint('❌❌❌ FAILED! Document not found after write');
-        throw Exception('Document verification failed');
-      }
-
-      debugPrint('========================================\n');
-    } catch (e, stackTrace) {
-      debugPrint('\n❌❌❌ ERROR SAVING DONATION ❌❌❌');
-      debugPrint('Error type: ${e.runtimeType}');
-      debugPrint('Error message: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('========================================\n');
-      rethrow;
-    }
-  }
-
   Stream<List<DonationModel>> getDonationsStream() {
-    debugPrint('👂 Setting up Firestore listener...');
+    debugPrint('👂 Setting up Admin Firestore listener...');
     return _donationsCollection
         .orderBy('date', descending: true)
         .snapshots()
         .map((snapshot) {
-          debugPrint('📥 Stream update: ${snapshot.docs.length} documents');
+          debugPrint(
+            '📥 Admin Stream update: ${snapshot.docs.length} documents',
+          );
 
           if (snapshot.docs.isEmpty) {
             debugPrint('⚠️ No documents found in Donation collection');
@@ -233,141 +164,72 @@ class FirebaseController {
         });
   }
 
-  Future<bool> testConnection() async {
+  Future<void> updateDonationStatus(
+    String donationId,
+    String approvalStatus,
+  ) async {
     try {
-      debugPrint('\n========================================');
-      debugPrint('🧪 TESTING FIRESTORE CONNECTION');
-      debugPrint('========================================');
-      debugPrint('📍 Project ID: project1-219ef');
-      debugPrint('📦 Platform: ${kIsWeb ? "Web" : "Mobile"}');
-
-      final testRef = _firestore.collection('test_connection').doc('test_doc');
-      final testData = {
-        'test': 'value',
-        'timestamp': FieldValue.serverTimestamp(),
-        'platform': kIsWeb ? 'web' : 'mobile',
-      };
-
-      debugPrint('⏳ Writing test document...');
-      await testRef.set(testData);
-      debugPrint('✅ Test document written');
-
-      debugPrint('⏳ Reading test document...');
-      final snapshot = await testRef.get();
-
-      if (snapshot.exists) {
-        debugPrint('✅✅✅ CONNECTION SUCCESS!');
-        debugPrint('📄 Test data: ${snapshot.data()}');
-        debugPrint('========================================\n');
-        return true;
-      } else {
-        debugPrint('❌ Test document not found');
-        debugPrint('========================================\n');
-        return false;
-      }
-    } catch (e, stackTrace) {
-      debugPrint('\n❌❌❌ CONNECTION TEST FAILED ❌❌❌');
-      debugPrint('Error: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('========================================\n');
-      return false;
-    }
-  }
-
-  // New method to check if collection exists and has documents
-  Future<void> checkCollectionStatus() async {
-    try {
-      debugPrint('\n========================================');
-      debugPrint('🔍 CHECKING DONATION COLLECTION STATUS');
-      debugPrint('========================================');
-
-      final snapshot = await _donationsCollection.limit(1).get();
-      debugPrint('📊 Collection exists: ${snapshot.docs.isNotEmpty}');
-      debugPrint('📊 Document count (first fetch): ${snapshot.docs.length}');
-
-      if (snapshot.docs.isNotEmpty) {
-        debugPrint('📄 Sample document: ${snapshot.docs.first.data()}');
-      } else {
-        debugPrint('⚠️ Collection is empty or does not exist yet');
-      }
-      debugPrint('========================================\n');
+      debugPrint('🔄 Updating donation $donationId to $approvalStatus');
+      await _donationsCollection.doc(donationId).update({
+        'approvalStatus': approvalStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ Donation status updated successfully');
     } catch (e) {
-      debugPrint('❌ Error checking collection: $e');
+      debugPrint('❌ Error updating donation status: $e');
+      rethrow;
     }
   }
 }
 
 // ============ MAIN APP ============
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-
-//   try {
-//     debugPrint('\n🚀🚀🚀 APP STARTING 🚀🚀🚀\n');
-//     debugPrint('========================================');
-//     debugPrint('FIREBASE INITIALIZATION');
-//     debugPrint('========================================');
-//     debugPrint('📦 Platform: ${kIsWeb ? "Web" : "Mobile (Android/iOS)"}');
-//     debugPrint('📍 Project: project1-219ef');
-
-//     await Firebase.initializeApp(
-//       options: DefaultFirebaseOptions.currentPlatform,
-//     );
-//     debugPrint('✅ Firebase initialized successfully');
-
-//     // Enable Firestore logging for web
-//     if (kIsWeb) {
-//       debugPrint('🌐 Running on Web - default settings applied');
-//     } else {
-//       try {
-//         FirebaseFirestore.instance.settings = const Settings(
-//           persistenceEnabled: true,
-//         );
-//         debugPrint('📱 Mobile persistence enabled');
-//       } catch (e) {
-//         debugPrint('⚠️ Could not enable persistence: $e');
-//       }
-//     }
-
-//     debugPrint('========================================\n');
-
-//     // Test connection
-//     final controller = FirebaseController();
-//     final isConnected = await controller.testConnection();
-
-//     if (isConnected) {
-//       debugPrint('✅ Ready to save donations!\n');
-//       // Check collection status
-//       await controller.checkCollectionStatus();
-//     } else {
-//       debugPrint(
-//         '❌ WARNING: Connection test failed! Check your Firebase configuration.\n',
-//       );
-//     }
-//   } catch (e, stackTrace) {
-//     debugPrint('\n❌❌❌ FIREBASE INITIALIZATION ERROR ❌❌❌');
-//     debugPrint('Error: $e');
-//     debugPrint('Stack trace: $stackTrace');
-//     debugPrint('========================================\n');
-//   }
-
-//   runApp(const NSSDonatioApp());
-// }
-
-// Import the config file
-
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await FirebaseConfig.initialize(); // One line initialization
-  runApp(const NSSDonatioApp());
+
+  try {
+    debugPrint('\n🚀🚀🚀 ADMIN APP STARTING 🚀🚀🚀\n');
+    debugPrint('========================================');
+    debugPrint('FIREBASE INITIALIZATION');
+    debugPrint('========================================');
+    debugPrint('📦 Platform: ${kIsWeb ? "Web" : "Mobile (Android/iOS)"}');
+    debugPrint('📍 Project: parivartan-c3238');
+
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('✅ Firebase initialized successfully');
+
+    if (kIsWeb) {
+      debugPrint('🌐 Running on Web - default settings applied');
+    } else {
+      try {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+        );
+        debugPrint('📱 Mobile persistence enabled');
+      } catch (e) {
+        debugPrint('⚠️ Could not enable persistence: $e');
+      }
+    }
+
+    debugPrint('========================================\n');
+  } catch (e, stackTrace) {
+    debugPrint('\n❌❌❌ FIREBASE INITIALIZATION ERROR ❌❌❌');
+    debugPrint('Error: $e');
+    debugPrint('Stack trace: $stackTrace');
+    debugPrint('========================================\n');
+  }
+
+  runApp(const AdminDonationApp());
 }
 
-class NSSDonatioApp extends StatelessWidget {
-  const NSSDonatioApp({super.key});
+class AdminDonationApp extends StatelessWidget {
+  const AdminDonationApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NSS Donation Portal',
+      title: 'NSS Admin Portal',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -391,62 +253,30 @@ class NSSDonatioApp extends StatelessWidget {
               width: 2,
             ),
           ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.red, width: 1),
-          ),
-          focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.red, width: 2),
-          ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 16,
           ),
         ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primaryOrange,
-            foregroundColor: AppColors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 0,
-            textStyle: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
       ),
-      home: const DonationPage(),
+      home: const AdminDonationPage(),
     );
   }
 }
 
-// ============ DONATION PAGE ============
-class DonationPage extends StatefulWidget {
-  const DonationPage({super.key});
+// ============ ADMIN DONATION PAGE ============
+class AdminDonationPage extends StatefulWidget {
+  const AdminDonationPage({super.key});
 
   @override
-  State<DonationPage> createState() => _DonationPageState();
+  State<AdminDonationPage> createState() => _AdminDonationPageState();
 }
 
-class _DonationPageState extends State<DonationPage>
-    with SingleTickerProviderStateMixin {
-  final FirebaseController _firebaseController = FirebaseController();
+class _AdminDonationPageState extends State<AdminDonationPage> {
+  final AdminFirebaseController _firebaseController = AdminFirebaseController();
   final List<DonationModel> _donations = [];
-  String? _selectedCategory;
-
-  final TextEditingController _detailsController = TextEditingController();
-  final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-
-  late TabController _tabController;
   bool _isLoading = true;
+  String _filterStatus = 'All';
 
   final List<Map<String, dynamic>> _categories = [
     {
@@ -480,7 +310,6 @@ class _DonationPageState extends State<DonationPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadDonations();
   }
 
@@ -505,185 +334,6 @@ class _DonationPageState extends State<DonationPage>
           _showErrorDialog('Error loading donations: $error');
         }
       },
-    );
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _detailsController.dispose();
-    _amountController.dispose();
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  String _generateUPILink(double amount, String donationId) {
-    String upiId = "mansigavhale618@okicici";
-    String name = "Mansi Ashok Gavhale";
-    String txnNote = "NSS Donation - $_selectedCategory";
-    String txnId = donationId;
-
-    return "upi://pay?pa=$upiId&pn=$name&mc=0000&tid=$txnId&tr=$txnId&tn=$txnNote&am=$amount&cu=INR";
-  }
-
-  void _showQRPaymentDialog(double amount, DonationModel donation) {
-    final upiString = _generateUPILink(amount, donation.id);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: AppColors.white,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.qr_code_2, size: 50, color: AppColors.navyBlue),
-              const SizedBox(height: 16),
-              Text(
-                'Scan to Pay',
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.navyBlue,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Amount: ₹${amount.toStringAsFixed(2)}',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green[700],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.lightGrey,
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: QrImageView(
-                  data: upiString,
-                  version: QrVersions.auto,
-                  size: 250,
-                  backgroundColor: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Scan with PhonePe / GPay / Paytm',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.darkGrey,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'UPI ID: mansigavhale618@okicici',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: AppColors.navyBlue,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Cancel'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        Navigator.pop(context);
-                        try {
-                          final updatedDonation = donation.copyWith(
-                            paymentStatus: 'Completed',
-                            transactionId: donation.id,
-                          );
-
-                          await _firebaseController.saveDonation(
-                            updatedDonation,
-                          );
-
-                          if (mounted) {
-                            _showReceiptDialog(updatedDonation);
-                            _showSuccessSnackBar();
-                            _clearForm();
-                          }
-                        } catch (e) {
-                          debugPrint('❌ Payment save error: $e');
-                          if (mounted) {
-                            _showErrorDialog('Failed to save payment: $e');
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Paid'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showSuccessSnackBar() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text('Donation saved successfully to Firebase!'),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
     );
   }
 
@@ -713,130 +363,62 @@ class _DonationPageState extends State<DonationPage>
     );
   }
 
-  void _clearForm() {
-    if (mounted) {
-      setState(() {
-        _selectedCategory = null;
-        _detailsController.clear();
-        _amountController.clear();
-        _nameController.clear();
-        _emailController.clear();
-        _phoneController.clear();
-      });
-      debugPrint('✅ Form cleared');
-    }
-  }
-
-  Future<void> _submitDonation() async {
-    debugPrint('\n🎯 SUBMIT DONATION BUTTON PRESSED');
-
-    if (_selectedCategory == null ||
-        _nameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              const Expanded(child: Text('Please fill all required fields')),
-            ],
-          ),
-          backgroundColor: Colors.red.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (_selectedCategory == 'Money' &&
-        (_amountController.text.isEmpty ||
-            double.tryParse(_amountController.text) == null ||
-            double.parse(_amountController.text) <= 0)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              const Expanded(child: Text('Please enter a valid amount')),
-            ],
-          ),
-          backgroundColor: Colors.red.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-      return;
-    }
-
-    final donation = DonationModel(
-      id: 'DON${DateTime.now().millisecondsSinceEpoch}',
-      type: _selectedCategory!,
-      details: _detailsController.text.trim().isEmpty
-          ? 'No details provided'
-          : _detailsController.text.trim(),
-      amount: _selectedCategory == 'Money'
-          ? double.tryParse(_amountController.text)
-          : null,
-      date: DateTime.now(),
-      name: _nameController.text.trim(),
-      email: _emailController.text.trim(),
-      phone: _phoneController.text.trim().isEmpty
-          ? 'Not provided'
-          : _phoneController.text.trim(),
-      paymentStatus: _selectedCategory == 'Money' ? 'Pending' : 'Completed',
-    );
-
-    debugPrint('📝 Created donation object with ID: ${donation.id}');
-
+  Future<void> _updateDonationStatus(
+    DonationModel donation,
+    String status,
+  ) async {
     try {
-      if (donation.type == 'Money' && donation.amount != null) {
-        debugPrint('💰 Money donation - showing QR dialog');
-        _showQRPaymentDialog(donation.amount!, donation);
-      } else {
-        debugPrint('📦 Non-money donation - saving directly');
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: AppColors.primaryOrange),
+        ),
+      );
 
-        // Show loading indicator
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const Center(
-              child: CircularProgressIndicator(color: AppColors.primaryOrange),
-            ),
-          );
-        }
-
-        await _firebaseController.saveDonation(donation);
-
-        if (mounted) {
-          Navigator.pop(context); // Close loading dialog
-          _showReceiptDialog(donation);
-          _showSuccessSnackBar();
-          _clearForm();
-        }
-      }
-    } catch (e, stackTrace) {
-      debugPrint('❌ Submit donation error: $e');
-      debugPrint('Stack trace: $stackTrace');
+      await _firebaseController.updateDonationStatus(donation.id, status);
 
       if (mounted) {
-        Navigator.of(
-          context,
-          rootNavigator: true,
-        ).pop(); // Close any open dialogs
-        _showErrorDialog('Failed to submit donation: $e');
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  status == 'Approved' ? Icons.check_circle : Icons.cancel,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Donation ${status.toLowerCase()} successfully!'),
+                ),
+              ],
+            ),
+            backgroundColor: status == 'Approved' ? Colors.green : Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating status: $e');
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _showErrorDialog('Failed to update donation status: $e');
       }
     }
   }
 
-  void _showReceiptDialog(DonationModel donation) {
+  void _showDonationDetails(DonationModel donation) {
+    final category = _categories.firstWhere(
+      (c) => c['name'] == donation.type,
+      orElse: () => _categories[0],
+    );
+
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -847,92 +429,144 @@ class _DonationPageState extends State<DonationPage>
             borderRadius: BorderRadius.circular(20),
             color: AppColors.white,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green[400],
-                  shape: BoxShape.circle,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: (category['color'] as Color).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    category['icon'] as IconData,
+                    color: category['color'] as Color,
+                    size: 40,
+                  ),
                 ),
-                child: const Icon(Icons.check, color: Colors.white, size: 40),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Donation Successful!',
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.navyBlue,
+                const SizedBox(height: 16),
+                Text(
+                  'Donation Details',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.navyBlue,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.lightGrey,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Column(
-                  children: [
-                    _receiptRow('Receipt ID:', donation.id),
-                    const Divider(height: 24),
-                    _receiptRow('Name:', donation.name),
-                    const Divider(height: 24),
-                    _receiptRow('Email:', donation.email),
-                    const Divider(height: 24),
-                    _receiptRow('Phone:', donation.phone),
-                    const Divider(height: 24),
-                    _receiptRow('Category:', donation.type),
-                    const Divider(height: 24),
-                    _receiptRow('Details:', donation.details),
-                    if (donation.amount != null) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGrey,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Column(
+                    children: [
+                      _detailRow('ID:', donation.id),
                       const Divider(height: 24),
-                      _receiptRow(
-                        'Amount:',
-                        '₹${donation.amount!.toStringAsFixed(2)}',
+                      _detailRow('Name:', donation.name),
+                      const Divider(height: 24),
+                      _detailRow('Email:', donation.email),
+                      const Divider(height: 24),
+                      _detailRow('Phone:', donation.phone),
+                      const Divider(height: 24),
+                      _detailRow('Category:', donation.type),
+                      const Divider(height: 24),
+                      _detailRow('Details:', donation.details),
+                      if (donation.amount != null) ...[
+                        const Divider(height: 24),
+                        _detailRow(
+                          'Amount:',
+                          '₹${donation.amount!.toStringAsFixed(2)}',
+                        ),
+                      ],
+                      if (donation.transactionId != null) ...[
+                        const Divider(height: 24),
+                        _detailRow('Transaction ID:', donation.transactionId!),
+                      ],
+                      const Divider(height: 24),
+                      _detailRow('Payment Status:', donation.paymentStatus),
+                      const Divider(height: 24),
+                      _detailRow('Approval Status:', donation.approvalStatus),
+                      const Divider(height: 24),
+                      _detailRow(
+                        'Date:',
+                        DateFormat(
+                          'dd MMM yyyy, hh:mm a',
+                        ).format(donation.date),
                       ),
                     ],
-                    if (donation.transactionId != null) ...[
-                      const Divider(height: 24),
-                      _receiptRow('Transaction ID:', donation.transactionId!),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (donation.approvalStatus == 'Pending') ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _updateDonationStatus(donation, 'Rejected');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Reject'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _updateDonationStatus(donation, 'Approved');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text('Accept'),
+                        ),
+                      ),
                     ],
-                    const Divider(height: 24),
-                    _receiptRow('Payment Status:', donation.paymentStatus),
-                    const Divider(height: 24),
-                    _receiptRow(
-                      'Date:',
-                      DateFormat('dd MMM yyyy, hh:mm a').format(donation.date),
+                  ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryOrange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 40,
+                        vertical: 16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryOrange,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 16,
+                    child: const Text('Close'),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text('Close', style: TextStyle(fontSize: 16)),
-              ),
-            ],
+                ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _receiptRow(String label, String value) {
+  Widget _detailRow(String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -963,13 +597,28 @@ class _DonationPageState extends State<DonationPage>
     );
   }
 
+  List<DonationModel> get _filteredDonations {
+    if (_filterStatus == 'All') {
+      return _donations;
+    }
+    return _donations
+        .where((donation) => donation.approvalStatus == _filterStatus)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.white,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+
         elevation: 0,
         backgroundColor: AppColors.white,
+        // leading: IconButton(
+        //   icon: const Icon(Icons.arrow_back, color: Colors.white),
+        //   onPressed: () => Navigator.of(context).pop(),
+        // ),
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -1004,7 +653,7 @@ class _DonationPageState extends State<DonationPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'NSS Donation Portal',
+                    'Admin Portal',
                     style: GoogleFonts.poppins(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1012,7 +661,7 @@ class _DonationPageState extends State<DonationPage>
                     ),
                   ),
                   Text(
-                    'Not Me, But You',
+                    'Manage Donations',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       color: Colors.white.withOpacity(0.9),
@@ -1027,254 +676,94 @@ class _DonationPageState extends State<DonationPage>
       ),
       body: Column(
         children: [
-          _buildTabBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [_buildDonationForm(), _buildHistoryView()],
-            ),
-          ),
+          _buildFilterChips(),
+          Expanded(child: _buildDonationsList()),
         ],
       ),
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildFilterChips() {
     return Container(
-      margin: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.lightGrey,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TabBar(
-        controller: _tabController,
-        indicator: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: const LinearGradient(
-            colors: [AppColors.navyBlue, Color(0xFF1976D2)],
-          ),
-        ),
-        labelColor: Colors.white,
-        unselectedLabelColor: AppColors.darkGrey,
-        labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        indicatorSize: TabBarIndicatorSize.tab,
-        dividerColor: Colors.transparent,
-        tabs: const [
-          Tab(text: 'Donate Now'),
-          Tab(text: 'History'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDonationForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Select Donation Type',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.navyBlue,
-            ),
-          ),
-          const SizedBox(height: 16),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.9,
-            ),
-            itemCount: _categories.length,
-            itemBuilder: (context, index) {
-              final category = _categories[index];
-              final isSelected = _selectedCategory == category['name'];
-              return GestureDetector(
-                onTap: () => setState(
-                  () => _selectedCategory = category['name'] as String,
-                ),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? LinearGradient(
-                            colors: [
-                              category['color'] as Color,
-                              (category['color'] as Color).withOpacity(0.7),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: isSelected ? null : AppColors.lightGrey,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? category['color'] as Color
-                          : AppColors.lightGrey,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        category['icon'] as IconData,
-                        size: 36,
-                        color: isSelected
-                            ? Colors.white
-                            : category['color'] as Color,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        category['name'] as String,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white : AppColors.navyBlue,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 32),
-          _buildTextField('Full Name *', _nameController, Icons.person_outline),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'Email Address *',
-            _emailController,
-            Icons.email_outlined,
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            'Phone Number',
-            _phoneController,
-            Icons.phone_outlined,
-          ),
-          const SizedBox(height: 16),
-          if (_selectedCategory == 'Money')
-            _buildTextField(
-              'Amount (₹) *',
-              _amountController,
-              Icons.currency_rupee,
-              isNumber: true,
-            ),
-          if (_selectedCategory == 'Money') const SizedBox(height: 16),
-          _buildTextField(
-            'Additional Details',
-            _detailsController,
-            Icons.notes,
-            maxLines: 4,
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _submitDonation,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryOrange,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _selectedCategory == 'Money'
-                        ? Icons.qr_code_scanner
-                        : Icons.favorite,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _selectedCategory == 'Money'
-                        ? 'Generate QR & Pay'
-                        : 'Submit Donation',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller,
-    IconData icon, {
-    int maxLines = 1,
-    bool isNumber = false,
-  }) {
-    return TextFormField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      style: GoogleFonts.poppins(),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: GoogleFonts.poppins(color: AppColors.darkGrey),
-        prefixIcon: Icon(icon, color: AppColors.primaryOrange),
-        filled: true,
-        fillColor: AppColors.lightGrey,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: AppColors.primaryOrange,
-            width: 2,
-          ),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip('All'),
+            const SizedBox(width: 8),
+            _buildFilterChip('Pending'),
+            const SizedBox(width: 8),
+            _buildFilterChip('Approved'),
+            const SizedBox(width: 8),
+            _buildFilterChip('Rejected'),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildHistoryView() {
+  Widget _buildFilterChip(String status) {
+    final isSelected = _filterStatus == status;
+    Color chipColor;
+    if (status == 'Approved') {
+      chipColor = Colors.green;
+    } else if (status == 'Rejected') {
+      chipColor = Colors.red;
+    } else if (status == 'Pending') {
+      chipColor = Colors.orange;
+    } else {
+      chipColor = AppColors.navyBlue;
+    }
+
+    return FilterChip(
+      label: Text(status),
+      selected: isSelected,
+      onSelected: (selected) {
+        setState(() => _filterStatus = status);
+      },
+      backgroundColor: AppColors.white,
+      selectedColor: chipColor.withOpacity(0.2),
+      labelStyle: GoogleFonts.poppins(
+        color: isSelected ? chipColor : AppColors.darkGrey,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+      ),
+      side: BorderSide(
+        color: isSelected ? chipColor : AppColors.lightGrey,
+        width: isSelected ? 2 : 1,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    );
+  }
+
+  Widget _buildDonationsList() {
     if (_isLoading) {
       return Center(
         child: CircularProgressIndicator(color: AppColors.primaryOrange),
       );
     }
 
-    if (_donations.isEmpty) {
+    final filteredDonations = _filteredDonations;
+
+    if (filteredDonations.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history, size: 80, color: AppColors.lightGrey),
+            Icon(Icons.inbox, size: 80, color: AppColors.lightGrey),
             const SizedBox(height: 16),
             Text(
-              'No donations yet',
+              'No donations found',
               style: GoogleFonts.poppins(
                 fontSize: 18,
                 color: AppColors.darkGrey,
@@ -1283,7 +772,9 @@ class _DonationPageState extends State<DonationPage>
             ),
             const SizedBox(height: 8),
             Text(
-              'Your donation history will appear here',
+              _filterStatus == 'All'
+                  ? 'No donations have been submitted yet'
+                  : 'No $_filterStatus donations',
               style: GoogleFonts.poppins(
                 fontSize: 14,
                 color: AppColors.darkGrey,
@@ -1295,106 +786,270 @@ class _DonationPageState extends State<DonationPage>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(24),
-      itemCount: _donations.length,
+      padding: const EdgeInsets.all(16),
+      itemCount: filteredDonations.length,
       itemBuilder: (context, index) {
-        final donation = _donations[index];
+        final donation = filteredDonations[index];
         final category = _categories.firstWhere(
           (c) => c['name'] == donation.type,
           orElse: () => _categories[0],
         );
+
+        Color statusColor;
+        IconData statusIcon;
+        if (donation.approvalStatus == 'Approved') {
+          statusColor = Colors.green;
+          statusIcon = Icons.check_circle;
+        } else if (donation.approvalStatus == 'Rejected') {
+          statusColor = Colors.red;
+          statusIcon = Icons.cancel;
+        } else {
+          statusColor = Colors.orange;
+          statusIcon = Icons.pending;
+        }
+
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: AppColors.lightGrey,
-            borderRadius: BorderRadius.circular(12),
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: statusColor.withOpacity(0.3), width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => _showReceiptDialog(donation),
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => _showDonationDetails(donation),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Row(
+                child: Column(
                   children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: (category['color'] as Color).withOpacity(
+                              0.1,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            category['icon'] as IconData,
+                            color: category['color'] as Color,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                donation.name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.navyBlue,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                donation.type,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  color: AppColors.darkGrey,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 12,
+                                    color: AppColors.darkGrey,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    DateFormat(
+                                      'dd MMM yyyy',
+                                    ).format(donation.date),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: AppColors.darkGrey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (donation.amount != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.green[50],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '₹${donation.amount!.toStringAsFixed(0)}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    statusIcon,
+                                    size: 14,
+                                    color: statusColor,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    donation.approvalStatus,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: statusColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: (category['color'] as Color).withOpacity(0.1),
+                        color: AppColors.lightGrey,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Icon(
-                        category['icon'] as IconData,
-                        color: category['color'] as Color,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Text(
-                            donation.type,
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.navyBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            donation.details,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13,
-                              color: AppColors.darkGrey,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.calendar_today,
-                                size: 12,
-                                color: AppColors.darkGrey,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                DateFormat('dd MMM yyyy').format(donation.date),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.darkGrey,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.email_outlined,
+                                      size: 14,
+                                      color: AppColors.darkGrey,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        donation.email,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: AppColors.darkGrey,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.phone_outlined,
+                                      size: 14,
+                                      color: AppColors.darkGrey,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      donation.phone,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 12,
+                                        color: AppColors.darkGrey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    if (donation.amount != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '₹${donation.amount!.toStringAsFixed(0)}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green[700],
+                    if (donation.approvalStatus == 'Pending') ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _updateDonationStatus(donation, 'Rejected'),
+                              icon: const Icon(Icons.close, size: 18),
+                              label: const Text('Reject'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                  _updateDonationStatus(donation, 'Approved'),
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text('Accept'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    const SizedBox(width: 8),
-                    Icon(Icons.chevron_right, color: AppColors.darkGrey),
+                    ],
                   ],
                 ),
               ),

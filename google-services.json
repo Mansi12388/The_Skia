@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "776412307701",
+    "project_id": "parivartan-c3238",
+    "storage_bucket": "parivartan-c3238.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:776412307701:android:fe13f2c79d8260293d25bc",
+        "android_client_info": {
+          "package_name": "com.example.parivartan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDkmtgkymdThtASpBdxmWOGd6l2oyIgK_E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
